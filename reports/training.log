@@ -1,0 +1,38 @@
+Data: 303 rows, 57 features (leakage cols removed)
+Class balance (positives): CAD=216/303, LAD=177/303, LCX=119/303, RCA=114/303
+
+=== Target: CAD ===
+  LogReg        AUC 0.933+-0.044 | F1 0.903 | Recall 0.870 | Prec 0.941
+  RandomForest  AUC 0.926+-0.052 | F1 0.897 | Recall 0.889 | Prec 0.907
+  XGBoost       AUC 0.910+-0.055 | F1 0.902 | Recall 0.935 | Prec 0.873
+  -> best for CAD: LogReg (AUC 0.933)
+Background dataset has 303 samples but max_samples=100. Subsampling to 100 samples for SHAP value computation. To use all samples, set max_samples=303 when initializing the masker.
+
+=== Target: LAD ===
+  LogReg        AUC 0.823+-0.050 | F1 0.776 | Recall 0.752 | Prec 0.804
+  RandomForest  AUC 0.861+-0.065 | F1 0.833 | Recall 0.848 | Prec 0.821
+  XGBoost       AUC 0.849+-0.063 | F1 0.829 | Recall 0.853 | Prec 0.808
+  -> best for LAD: RandomForest (AUC 0.861)
+
+=== Target: LCX ===
+  LogReg        AUC 0.631+-0.054 | F1 0.534 | Recall 0.588 | Prec 0.492
+  RandomForest  AUC 0.724+-0.076 | F1 0.608 | Recall 0.604 | Prec 0.614
+  XGBoost       AUC 0.733+-0.078 | F1 0.580 | Recall 0.530 | Prec 0.649
+  -> best for LCX: XGBoost (AUC 0.733)
+
+=== Target: RCA ===
+  LogReg        AUC 0.719+-0.028 | F1 0.604 | Recall 0.667 | Prec 0.570
+  RandomForest  AUC 0.707+-0.053 | F1 0.550 | Recall 0.534 | Prec 0.581
+  XGBoost       AUC 0.696+-0.074 | F1 0.485 | Recall 0.420 | Prec 0.588
+  -> best for RCA: LogReg (AUC 0.719)
+Background dataset has 303 samples but max_samples=100. Subsampling to 100 samples for SHAP value computation. To use all samples, set max_samples=303 when initializing the masker.
+
+=== FINAL (best model per target, repeated-CV mean) ===
+target        model  accuracy  precision  recall     f1  roc_auc
+   CAD       LogReg    0.8677     0.9408  0.8702 0.9033   0.9335
+   LAD RandomForest    0.8020     0.8205  0.8476 0.8334   0.8615
+   LCX      XGBoost    0.6996     0.6489  0.5297 0.5801   0.7328
+   RCA       LogReg    0.6699     0.5703  0.6672 0.6038   0.7191
+
+Saved models -> D:\multimodal\models
+Saved reports -> D:\multimodal\reports
