@@ -24,12 +24,25 @@ import logging
 import pandas as pd
 import numpy as np
 
-from backend.preprocess import preprocess_single_patient, get_demo_patients, FEATURE_ORDER
+from backend.preprocess import preprocess_single_patient, get_demo_patients, FEATURE_ORDER, CANONICAL_MAP
 from backend.agent import ClinicalExplainerAgent, DISCLAIMER_TEXT
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cardio-backend")
+
+# Backward compatibility patch for pandas 2.3+ NDArrayBacked StringArray unpickling
+try:
+    from pandas.core.arrays.string_ import StringArray
+    from pandas._libs.arrays import NDArrayBacked
+    _orig_setstate = NDArrayBacked.__setstate__
+    def _patched_string_array_setstate(self, state):
+        if isinstance(state, tuple) and len(state) == 2:
+            return _orig_setstate(self, (state[0], state[1], {}))
+        return _orig_setstate(self, state)
+    StringArray.__setstate__ = _patched_string_array_setstate
+except Exception as e:
+    logger.warning(f"StringArray unpickle patch not applied: {e}")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "models"
@@ -61,7 +74,7 @@ AGENT = None
 def load_artifacts():
     global MODELS, EXPLAINERS, SCHEMA, METRICS, AGENT
     logger.info("Loading ML models and explainers...")
-    
+
     # Load calibrated prediction models
     for target in ["cad", "lad", "lcx", "rca"]:
         model_path = MODEL_DIR / f"model_{target}.joblib"
@@ -110,7 +123,7 @@ def predict_internal(patient_dict: dict) -> dict:
     df_patient = preprocess_single_patient(patient_dict)
     probabilities = {}
     vessel_status = {}
-    
+
     # Decision thresholds: standard 0.50 for CAD/LAD, 0.40 for LCX and 0.45 for RCA
     thresholds = {"CAD": 0.50, "LAD": 0.50, "LCX": 0.40, "RCA": 0.45}
 
@@ -119,6 +132,8 @@ def predict_internal(patient_dict: dict) -> dict:
             prob = float(MODELS[target].predict_proba(df_patient)[0, 1])
         else:
             prob = 0.5
+        # Ensure finite probability strictly bounded in [0, 1]
+        prob = max(0.0, min(1.0, prob))
         probabilities[target] = round(prob, 4)
         vessel_status[target] = "Stenotic / High Risk" if prob >= thresholds[target] else "Normal / Low Risk"
 
@@ -144,7 +159,7 @@ def explain_internal(patient_dict: dict, target: str = "CAD") -> dict:
     target_key = target.upper()
     if target_key not in EXPLAINERS:
         target_key = "CAD"
-        
+
     df_patient = preprocess_single_patient(patient_dict)
     expl_data = EXPLAINERS[target_key]
     pipe = expl_data["pipeline"]
@@ -153,7 +168,7 @@ def explain_internal(patient_dict: dict, target: str = "CAD") -> dict:
     # Transform patient through preprocessing pipeline steps before the classifier
     Xt = pd.DataFrame(pipe[:-1].transform(df_patient), columns=FEATURE_ORDER)
     sv = explainer.shap_values(Xt)
-    
+
     if isinstance(sv, list):
         sv = sv[1]
     sv = np.asarray(sv)
@@ -163,11 +178,35 @@ def explain_internal(patient_dict: dict, target: str = "CAD") -> dict:
 
     raw_values = df_patient.iloc[0].to_dict()
     feature_impacts = []
-    
+
+    # Pre-build normalized lookup map of input patient_dict
+    normalized_patient_dict = {}
+    for k, v in patient_dict.items():
+        k_str = str(k).strip()
+        k_norm = k_str.lower().replace("_", " ").replace("-", " ").strip()
+        canon = CANONICAL_MAP.get(k_norm, CANONICAL_MAP.get(k_str.lower(), k_str))
+        normalized_patient_dict[canon] = v
+        normalized_patient_dict[k] = v
+
     for feat_name, shap_val in zip(FEATURE_ORDER, sv):
+        # Prefer direct patient value (checking canonical and raw keys)
+        val_source = None
+        if feat_name in patient_dict and patient_dict[feat_name] is not None:
+            val_source = patient_dict[feat_name]
+        elif feat_name in normalized_patient_dict and normalized_patient_dict[feat_name] is not None:
+            val_source = normalized_patient_dict[feat_name]
+
+        if val_source is not None:
+            try:
+                feat_val = round(float(val_source), 2)
+            except (ValueError, TypeError):
+                feat_val = round(float(raw_values.get(feat_name, 0.0)), 2)
+        else:
+            feat_val = round(float(raw_values.get(feat_name, 0.0)), 2)
+
         feature_impacts.append({
             "feature": feat_name,
-            "value": round(float(raw_values.get(feat_name, 0.0)), 2),
+            "value": feat_val,
             "shap": round(float(shap_val), 4),
             "abs_shap": round(abs(float(shap_val)), 4)
         })
@@ -261,10 +300,10 @@ def agent_chat_endpoint(req: ChatRequest):
     try:
         if not AGENT:
             raise HTTPException(status_code=503, detail="Agent not initialized")
-        
+
         narrative = AGENT.answer_query(req.query, req.patient, req.target or "CAD")
         explanation_details = AGENT.generate_clinical_explanation(req.patient, req.target or "CAD")
-        
+
         return {
             "reply": narrative,
             "target": req.target or "CAD",

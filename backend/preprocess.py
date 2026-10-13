@@ -13,14 +13,14 @@ LEAKAGE_COLS = ["Cath", "LAD", "LCX", "RCA"]
 
 # Feature order saved from training pipeline
 FEATURE_ORDER = [
-    'Age', 'Weight', 'Length', 'Sex', 'BMI', 'DM', 'HTN', 'Current Smoker', 
-    'EX-Smoker', 'FH', 'CRF', 'CVA', 'Airway disease', 'Thyroid Disease', 
-    'CHF', 'DLP', 'BP', 'PR', 'Edema', 'Weak Peripheral Pulse', 'Lung rales', 
-    'Systolic Murmur', 'Diastolic Murmur', 'Typical Chest Pain', 'Dyspnea', 
-    'Function Class', 'Atypical', 'Nonanginal', 'Exertional CP', 'LowTH Ang', 
-    'Q Wave', 'St Elevation', 'St Depression', 'Tinversion', 'LVH', 
-    'Poor R Progression', 'BBB', 'FBS', 'CR', 'TG', 'LDL', 'HDL', 'BUN', 
-    'ESR', 'HB', 'K', 'Na', 'WBC', 'Lymph', 'Neut', 'PLT', 'EF-TTE', 
+    'Age', 'Weight', 'Length', 'Sex', 'BMI', 'DM', 'HTN', 'Current Smoker',
+    'EX-Smoker', 'FH', 'CRF', 'CVA', 'Airway disease', 'Thyroid Disease',
+    'CHF', 'DLP', 'BP', 'PR', 'Edema', 'Weak Peripheral Pulse', 'Lung rales',
+    'Systolic Murmur', 'Diastolic Murmur', 'Typical Chest Pain', 'Dyspnea',
+    'Function Class', 'Atypical', 'Nonanginal', 'Exertional CP', 'LowTH Ang',
+    'Q Wave', 'St Elevation', 'St Depression', 'Tinversion', 'LVH',
+    'Poor R Progression', 'BBB', 'FBS', 'CR', 'TG', 'LDL', 'HDL', 'BUN',
+    'ESR', 'HB', 'K', 'Na', 'WBC', 'Lymph', 'Neut', 'PLT', 'EF-TTE',
     'Region RWMA', 'VHD', 'TG_HDL', 'LDL_HDL', 'NLR'
 ]
 
@@ -36,78 +36,137 @@ WINSOR_BOUNDS = {
     "FBS": (70.0, 319.21)
 }
 
+# Clinical training medians from models/schema.json to prevent 0.0 imputation artifacts
+DEFAULT_CLINICAL_VALUES = {
+    'Age': 58.0, 'Weight': 74.0, 'Length': 165.0, 'Sex': 1.0, 'BMI': 26.8,
+    'DM': 0.0, 'HTN': 1.0, 'Current Smoker': 0.0, 'EX-Smoker': 0.0, 'FH': 0.0,
+    'CRF': 0.0, 'CVA': 0.0, 'Airway disease': 0.0, 'Thyroid Disease': 0.0, 'CHF': 0.0, 'DLP': 0.0,
+    'BP': 130.0, 'PR': 70.0, 'Edema': 0.0, 'Weak Peripheral Pulse': 0.0, 'Lung rales': 0.0,
+    'Systolic Murmur': 0.0, 'Diastolic Murmur': 0.0, 'Typical Chest Pain': 1.0, 'Dyspnea': 0.0,
+    'Function Class': 0.0, 'Atypical': 0.0, 'Nonanginal': 0.0, 'Exertional CP': 0.0, 'LowTH Ang': 0.0,
+    'Q Wave': 0.0, 'St Elevation': 0.0, 'St Depression': 0.0, 'Tinversion': 0.0, 'LVH': 0.0,
+    'Poor R Progression': 0.0, 'BBB': 0.0, 'FBS': 100.0, 'CR': 0.9, 'TG': 142.0,
+    'LDL': 100.0, 'HDL': 41.0, 'BUN': 16.0, 'ESR': 15.0, 'HB': 13.5,
+    'K': 4.2, 'Na': 140.0, 'WBC': 7200.0, 'Lymph': 30.0, 'Neut': 61.0, 'PLT': 240.0,
+    'EF-TTE': 47.0, 'Region RWMA': 0.0, 'VHD': 0.0, 'TG_HDL': 3.46, 'LDL_HDL': 2.44, 'NLR': 2.03
+}
+
+
+def get_default_patient() -> dict:
+    """Returns a full baseline patient dictionary matching all 57 schema features."""
+    return dict(DEFAULT_CLINICAL_VALUES)
+
+
+def _canonical_key_map():
+    """Build case-insensitive, punctuation-insensitive lookup mapping to canonical feature names."""
+    m = {}
+    for col in FEATURE_ORDER:
+        norm = col.lower().replace("_", " ").replace("-", " ").strip()
+        m[norm] = col
+        m[col.lower()] = col
+        m[col] = col
+    for leak in LEAKAGE_COLS:
+        norm = leak.lower().replace("_", " ").replace("-", " ").strip()
+        m[norm] = leak
+        m[leak.lower()] = leak
+        m[leak] = leak
+    return m
+
+CANONICAL_MAP = _canonical_key_map()
+
 
 def preprocess_single_patient(raw_dict: dict) -> pd.DataFrame:
     """
-    Transforms a single patient input dictionary into a 1-row DataFrame 
+    Transforms a single patient input dictionary into a 1-row DataFrame
     strictly matching the 57 features and exact column order expected by models.
+    Normalizes keys (case-insensitive, handles underscores/dashes) to guarantee
+    patient input values are never lost or erroneously set to 0.0.
     """
-    data = dict(raw_dict)
-    
-    # Remove leakage columns if passed
+    raw_data = dict(raw_dict)
+
+    # 1. Normalize keys to canonical feature names
+    data = {}
+    for k, v in raw_data.items():
+        k_str = str(k).strip()
+        k_norm = k_str.lower().replace("_", " ").replace("-", " ").strip()
+        canonical_name = CANONICAL_MAP.get(k_norm, CANONICAL_MAP.get(k_str.lower(), k_str))
+        data[canonical_name] = v
+
+    # 2. Strict target leakage stripping (regardless of original key casing)
     for col in LEAKAGE_COLS:
         data.pop(col, None)
-    
-    # Handle Sex
+        data.pop(col.lower(), None)
+        data.pop(col.upper(), None)
+
+    # 3. Handle Sex
     if "Sex" in data:
         val = str(data["Sex"]).strip().lower()
-        if val in ["male", "1", "1.0", "m"]:
+        if val in ["male", "1", "1.0", "m", "true"]:
             data["Sex"] = 1.0
-        else:
+        elif val in ["female", "0", "0.0", "f", "false", "fmale"]:
             data["Sex"] = 0.0
-            
-    # Handle VHD (Valvular Heart Disease)
+
+    # 4. Handle VHD (Valvular Heart Disease)
     if "VHD" in data:
         val = str(data["VHD"]).strip()
-        vhd_map = {"N": 0.0, "mild": 1.0, "Moderate": 2.0, "Severe": 3.0,
+        vhd_map = {"n": 0.0, "none": 0.0, "mild": 1.0, "moderate": 2.0, "severe": 3.0,
                    "0": 0.0, "1": 1.0, "2": 2.0, "3": 3.0}
-        data["VHD"] = vhd_map.get(val, 0.0)
-        
-    # Convert Yes/No strings or bools to 1.0 / 0.0
+        data["VHD"] = vhd_map.get(val.lower(), 0.0)
+
+    # 5. Convert Yes/No strings or bools to 1.0 / 0.0
     for k, v in list(data.items()):
         if isinstance(v, str):
             v_str = v.strip().upper()
-            if v_str in ["Y", "YES", "TRUE"]:
+            if v_str in ["Y", "YES", "TRUE", "PRESENT", "POSITIVE"]:
                 data[k] = 1.0
-            elif v_str in ["N", "NO", "FALSE"]:
+            elif v_str in ["N", "NO", "FALSE", "ABSENT", "NEGATIVE"]:
                 data[k] = 0.0
         elif isinstance(v, bool):
             data[k] = 1.0 if v else 0.0
 
-    # Ensure numeric types
+    # 6. Ensure numeric types with fallback to clinical training medians
     cleaned = {}
     for k, v in data.items():
         try:
             cleaned[k] = float(v)
         except (ValueError, TypeError):
-            cleaned[k] = 0.0
+            cleaned[k] = DEFAULT_CLINICAL_VALUES.get(k, 0.0)
 
-    # Compute engineered ratios if not provided or to ensure accuracy
-    hdl = cleaned.get("HDL", 40.0)
+    # 7. Compute engineered clinical ratios
+    hdl = cleaned.get("HDL", DEFAULT_CLINICAL_VALUES["HDL"])
     hdl = hdl if hdl > 0 else 40.0
-    
-    tg = cleaned.get("TG", 150.0)
+
+    tg = cleaned.get("TG", DEFAULT_CLINICAL_VALUES["TG"])
     cleaned["TG_HDL"] = tg / hdl
-    
-    ldl = cleaned.get("LDL", 100.0)
+
+    ldl = cleaned.get("LDL", DEFAULT_CLINICAL_VALUES["LDL"])
     cleaned["LDL_HDL"] = ldl / hdl
-    
-    lymph = cleaned.get("Lymph", 30.0)
+
+    lymph = cleaned.get("Lymph", DEFAULT_CLINICAL_VALUES["Lymph"])
     lymph = lymph if lymph > 0 else 30.0
-    neut = cleaned.get("Neut", 60.0)
+    neut = cleaned.get("Neut", DEFAULT_CLINICAL_VALUES["Neut"])
     cleaned["NLR"] = neut / lymph
-    
+
     # Obesity dropped to avoid BMI collinearity
     cleaned.pop("Obesity", None)
 
-    # Winsorize skewed labs
+    # 8. Winsorize skewed laboratory biomarkers
     for feat, (lo, hi) in WINSOR_BOUNDS.items():
         if feat in cleaned:
             cleaned[feat] = float(np.clip(cleaned[feat], lo, hi))
 
-    # Assemble into DataFrame according to FEATURE_ORDER
-    row = {col: cleaned.get(col, 0.0) for col in FEATURE_ORDER}
+    # 9. Assemble into DataFrame according to FEATURE_ORDER, using clinical medians for unprovided columns
+    row = {}
+    for col in FEATURE_ORDER:
+        if col in cleaned and cleaned[col] is not None:
+            row[col] = cleaned[col]
+        else:
+            row[col] = DEFAULT_CLINICAL_VALUES.get(col, 0.0)
+
     df = pd.DataFrame([row], columns=FEATURE_ORDER).astype(float)
+
+    # Strict target leakage assertion
+    assert not any(c in df.columns for c in LEAKAGE_COLS), f"Target leakage detected: {set(df.columns) & set(LEAKAGE_COLS)}"
     return df
 
 

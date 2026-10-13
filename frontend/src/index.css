@@ -17,40 +17,57 @@
   body {
     margin: 0;
     padding: 0;
-    background-color: #F6F7F9;
-    color: #0F172A;
+    background-color: #F5F8FB;
+    color: #0B1B2B;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   .dark body {
-    background-color: #0B1120;
-    color: #F1F5F9;
+    background-color: #07121E;
+    color: #F8FAFC;
   }
 
   /* Universal tabular figures for all data/numeric tables and percentages */
   .tabular-nums, table, [data-tabular] {
     font-variant-numeric: tabular-nums;
   }
+
+  /* Focus visible accessibility styling */
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid #0D9488;
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
-/* Restrained clinical surface styling - 1px neutral border, subtle elevation */
+/* Formal minimal clinical card styling */
 .clinical-card {
   background-color: #FFFFFF;
   border: 1px solid #E2E8F0;
-  border-radius: 0.5rem; /* 8px */
+  border-radius: 0.75rem; /* 12px */
+  box-shadow: 0 1px 3px 0 rgba(11, 27, 43, 0.04);
 }
 
 .dark .clinical-card {
-  background-color: #1E293B;
-  border-color: #334155;
+  background-color: #0E1D2D;
+  border-color: #1E3147;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.2);
 }
 
 /* Subtle, unobtrusive clinical scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -60,7 +77,7 @@
   border-radius: 4px;
 }
 .dark ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: #334155;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;

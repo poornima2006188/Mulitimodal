@@ -1,6 +1,8 @@
 import React from 'react';
 import { PatientData } from '../types';
 
+import { DEFAULT_PATIENT } from '../config/defaultPatient';
+
 interface MeasurementsTableProps {
   patient: PatientData;
 }
@@ -15,15 +17,17 @@ interface MeasurementRow {
 
 export const MeasurementsTable: React.FC<MeasurementsTableProps> = ({ patient }) => {
   const getMeasurementStatus = (): MeasurementRow[] => {
-    const ef = patient['EF-TTE'] ?? 55;
-    const bp = patient['BP'] ?? 120;
-    const ldl = patient['LDL'] ?? 100;
-    const hdl = patient['HDL'] ?? 45;
-    const tg = patient['TG'] ?? 140;
-    const fbs = patient['FBS'] ?? 95;
-    const stElev = patient['St Elevation'] ?? 0;
-    const rwma = patient['Region RWMA'] ?? 0;
-    const nlr = patient['NLR'] ?? (patient['Neut'] && patient['Lymph'] ? patient['Neut'] / patient['Lymph'] : 2.0);
+    const ef = patient['EF-TTE'] ?? DEFAULT_PATIENT['EF-TTE'];
+    const bp = patient['BP'] ?? DEFAULT_PATIENT['BP'];
+    const ldl = patient['LDL'] ?? DEFAULT_PATIENT['LDL'];
+    const hdl = patient['HDL'] ?? DEFAULT_PATIENT['HDL'];
+    const tg = patient['TG'] ?? DEFAULT_PATIENT['TG'];
+    const fbs = patient['FBS'] ?? DEFAULT_PATIENT['FBS'];
+    const stElev = patient['St Elevation'] ?? DEFAULT_PATIENT['St Elevation'];
+    const rwma = patient['Region RWMA'] ?? DEFAULT_PATIENT['Region RWMA'];
+    const neut = patient['Neut'] ?? DEFAULT_PATIENT['Neut'];
+    const lymph = patient['Lymph'] ?? DEFAULT_PATIENT['Lymph'];
+    const nlr = patient['NLR'] ?? (neut && lymph ? neut / lymph : 2.03);
 
     return [
       {

@@ -1,6 +1,6 @@
 # CardioRisk 3D | Cardiovascular Risk Visualization & Prediction
-**Track A — Multimodal AI Hackathon 2026**  
-**Author**: Kirthana (Final-Year CSE)  
+**Track A — Multimodal AI Hackathon 2026**
+**Author**: Kirthana (Final-Year CSE)
 **Dataset**: UCI Extension of Z-Alizadeh Sani ($N=303$, 57 Engineered Clinical Features)
 
 ---
@@ -30,7 +30,7 @@ CardioRisk 3D is an AI-powered clinical decision-support system that:
 
 ## 📁 Repository Structure
 ```
-d:/multimodal/
+.
 ├── backend/
 │   ├── main.py                  # FastAPI application with REST endpoints
 │   ├── preprocess.py            # Shared preprocessing & demo patient loader
@@ -70,9 +70,24 @@ d:/multimodal/
 ├── extention of Z-Alizadeh sani dataset.xlsx  # Dataset
 ├── train.py                           # Full ML training & repeated CV pipeline
 ├── DOCUMENTATION.md                   # Complete 6-Page Technical Report
-├── DEMO_VIDEO_SCRIPT.md               # 6-Minute YouTube demo video script
+├── DEMO_VIDEO_SCRIPT.md               # 6-Minute demo video script
 └── requirements.txt                   # Root Python dependencies
 ```
+
+---
+
+## 📜 Dataset & 3D Asset Attribution
+
+### 1. Dataset Attribution
+- **Dataset**: Extension of Z-Alizadeh Sani Dataset ($N=303$, 54 raw clinical features + 4 angiographic outcomes).
+- **Origin**: UCI Machine Learning Repository (DOI: `10.24432/C59P43`).
+- **Citation**: Alizadeh Sani, Z., Naseri, M., Khorasani, M., et al. (2018). *A computer-aided diagnosis system for detecting coronary artery disease using clinical data*.
+- **License**: Creative Commons Attribution 4.0 International (CC BY 4.0).
+
+### 2. 3D Heart Vasculature Attribution
+- **Source**: Procedural Three.js WebGL geometry created natively within this project ([HeartViewer.tsx](file:///c:/Users/Poornima/OneDrive/Desktop/NAV/ArteryLens-Visual-Intelligence-for-Coronary-Risk/frontend/src/components/HeartViewer.tsx)).
+- **Implementation**: Ventricular body deformed from `THREE.SphereGeometry`; aorta, pulmonary trunk, superior vena cava, LAD, LCX, and RCA extruded along parametric `THREE.CatmullRomCurve3` cubic splines via `THREE.TubeGeometry`.
+- **License**: MIT License (Original project code; no external commercial 3D mesh files imported).
 
 ---
 
@@ -121,6 +136,21 @@ Evaluated via Repeated Stratified 5-Fold Cross-Validation ($N=303$):
 | **LAD** | Random Forest | **0.862** | 0.833 | 84.8% | 82.1% | 80.2% |
 | **LCX** | XGBoost | **0.733** | 0.580 | 53.0% | 64.9% | 70.0% |
 | **RCA** | Logistic Regression | **0.719** | 0.604 | 66.7% | 57.0% | 67.0% |
+
+---
+
+## 🛠️ Troubleshooting & Common Questions
+
+1. **Port 8000 or 5173 Already in Use**:
+   - Check if an existing process is using the port:
+     ```powershell
+     Get-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess
+     ```
+   - Terminate old processes or run uvicorn on another port with `--port <PORT>` and update `VITE_API_URL` or `api.ts`.
+2. **Scikit-Learn / Joblib Unpickle Version Warnings**:
+   - The models were trained with standard scikit-learn pipelines. A non-breaking warning (`InconsistentVersionWarning`) may appear on Python 3.14/scikit-learn 1.8; inference and calibration function normally.
+3. **Missing Environment Variables**:
+   - The application does not require external third-party API keys or cloud credentials. All 4 prediction models, SHAP explainers, and demo cases execute completely offline.
 
 ---
 

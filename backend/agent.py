@@ -9,9 +9,8 @@ import re
 from typing import Dict, Any, List, Optional
 
 DISCLAIMER_TEXT = (
-    "Disclaimer: These predictions and explanations are strictly for clinical decision support "
-    "and educational purposes only. They are not a substitute for formal diagnostic imaging (e.g., coronary "
-    "angiography, CCTA) or clinical judgment by a licensed physician."
+    "Predictions are for decision-support and educational purposes only. "
+    "They are not a substitute for formal diagnostic imaging or clinical judgment."
 )
 
 class ClinicalExplainerAgent:
@@ -37,7 +36,7 @@ class ClinicalExplainerAgent:
         modified = dict(patient_dict)
         modified.update(changes)
         counterfactual = self.predict_fn(modified)
-        
+
         diffs = {}
         for vessel in ["CAD", "LAD", "LCX", "RCA"]:
             base_p = baseline["probabilities"][vessel]
@@ -137,7 +136,7 @@ class ClinicalExplainerAgent:
         """Processes clinician conversational queries with grounded facts and safety rails."""
         q = query.lower().strip()
         preds = self.tool_predict_risk(patient_data)
-        
+
         # Check if query is about what-if simulations
         if "what if" in q or "reduce" in q or "stop smoking" in q or "statins" in q or "cholesterol" in q:
             changes = {}

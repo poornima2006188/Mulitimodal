@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { RotateCw, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { RotateCw, ZoomIn, ZoomOut, RotateCcw, Box, Eye, Info } from 'lucide-react';
 import { RISK_BANDS, getRiskBand } from '../config/riskBands';
 
 interface HeartViewerProps {
@@ -22,6 +22,7 @@ export const HeartViewer: React.FC<HeartViewerProps> = ({
   const [hoveredVessel, setHoveredVessel] = useState<string | null>(null);
   const [autoRotate, setAutoRotate] = useState<boolean>(false);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const [viewMode, setViewMode] = useState<'heart' | 'vessels'>('heart');
 
   // References to Three.js objects
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -48,29 +49,34 @@ export const HeartViewer: React.FC<HeartViewerProps> = ({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    const width = mount.clientWidth;
-    const height = mount.clientHeight;
+    const width = mount.clientWidth || 520;
+    const height = mount.clientHeight || 440;
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
-    camera.position.set(0, 1.0, 5.2);
+    // Camera framing: adjusted slightly back (z: 5.4, y: 0.5) to keep the entire myocardium and great vessels in full view
+    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
+    camera.position.set(0, 0.5, 5.4);
+    camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = false;
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.display = 'block';
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // --- 2. Balanced clinical lighting (soft daylight, no colored neon rims) ---
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
+    // --- 2. Balanced clinical lighting ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
     scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.8);
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.9);
     dirLight1.position.set(4, 8, 6);
     scene.add(dirLight1);
 
-    const dirLight2 = new THREE.DirectionalLight(0xf1f5f9, 0.8);
+    const dirLight2 = new THREE.DirectionalLight(0xf1f5f9, 0.9);
     dirLight2.position.set(-4, -2, -3);
     scene.add(dirLight2);
 
@@ -79,8 +85,8 @@ export const HeartViewer: React.FC<HeartViewerProps> = ({
     heartGroupRef.current = heartGroup;
     scene.add(heartGroup);
 
-    // Anatomical Myocardium (Ventricles Body) - natural matte tissue tone
-    const heartGeo = new THREE.SphereGeometry(1.35, 64, 64);
+    // Anatomical Myocardium (Ventricles Body)
+    const heartGeo = new THREE.SphereGeometry(1.32, 64, 64);
     const pos = heartGeo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       let x = pos.getX(i);
@@ -94,195 +100,185 @@ export const HeartViewer: React.FC<HeartViewerProps> = ({
       } else {
         y += Math.sin(x * 2.0) * 0.12;
       }
-      if (x < 0 && y < 0.2) {
-        x *= 1.15;
-      }
-      pos.setXYZ(i, x, y * 1.15, z * 0.85);
+      pos.setXYZ(i, x, y, z);
     }
     heartGeo.computeVertexNormals();
 
-    const heartMat = new THREE.MeshStandardMaterial({
-      color: 0x933333,        // Desaturated anatomical tissue crimson
+    const myocardiumMat = new THREE.MeshStandardMaterial({
+      color: 0x933633, // Organic muscle tissue tone
       roughness: 0.55,
-      metalness: 0.05,
-      emissive: 0x2b0d0d,
-      emissiveIntensity: 0.15
+      metalness: 0.1
     });
-    const heartMesh = new THREE.Mesh(heartGeo, heartMat);
-    heartGroup.add(heartMesh);
+    materialsRef.current['myocardium'] = myocardiumMat;
+    const myocardium = new THREE.Mesh(heartGeo, myocardiumMat);
+    myocardium.name = 'myocardium';
+    heartGroup.add(myocardium);
 
-    // Aorta Arch (Deep arterial tone)
+    // Great Vessels (Aorta Arch & Pulmonary Trunk)
     const aortaCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-0.15, 0.8, 0.1),
-      new THREE.Vector3(-0.05, 1.4, 0.0),
-      new THREE.Vector3(0.3, 1.65, -0.2),
-      new THREE.Vector3(0.55, 1.45, -0.4),
-      new THREE.Vector3(0.65, 0.6, -0.5),
+      new THREE.Vector3(-0.15, 0.7, 0.1),
+      new THREE.Vector3(-0.1, 1.6, 0.0),
+      new THREE.Vector3(0.2, 2.0, -0.2),
+      new THREE.Vector3(0.65, 1.7, -0.4),
+      new THREE.Vector3(0.7, 1.0, -0.5)
     ]);
-    const aortaGeo = new THREE.TubeGeometry(aortaCurve, 32, 0.26, 16, false);
+    const aortaGeo = new THREE.TubeGeometry(aortaCurve, 40, 0.32, 24, false);
     const aortaMat = new THREE.MeshStandardMaterial({
-      color: 0xbe123c,
-      roughness: 0.5,
-      metalness: 0.05
+      color: 0xaa3333,
+      roughness: 0.4,
+      metalness: 0.15
     });
     const aortaMesh = new THREE.Mesh(aortaGeo, aortaMat);
     heartGroup.add(aortaMesh);
 
-    // Pulmonary Trunk (Venous deep indigo-blue)
     const pulmCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.15, 0.65, 0.35),
-      new THREE.Vector3(0.1, 1.25, 0.15),
-      new THREE.Vector3(-0.35, 1.35, -0.15),
+      new THREE.Vector3(0.1, 0.6, 0.35),
+      new THREE.Vector3(-0.25, 1.3, 0.25),
+      new THREE.Vector3(-0.6, 1.5, -0.1)
     ]);
-    const pulmGeo = new THREE.TubeGeometry(pulmCurve, 24, 0.22, 16, false);
+    const pulmGeo = new THREE.TubeGeometry(pulmCurve, 30, 0.26, 20, false);
     const pulmMat = new THREE.MeshStandardMaterial({
-      color: 0x1d4ed8,
-      roughness: 0.5,
-      metalness: 0.05
+      color: 0x3b5f8f,
+      roughness: 0.45,
+      metalness: 0.1
     });
     const pulmMesh = new THREE.Mesh(pulmGeo, pulmMat);
     heartGroup.add(pulmMesh);
 
-    // Superior Vena Cava
-    const svcCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.75, 0.6, 0.1),
-      new THREE.Vector3(0.8, 1.5, 0.05)
-    ]);
-    const svcGeo = new THREE.TubeGeometry(svcCurve, 16, 0.2, 16, false);
-    const svcMesh = new THREE.Mesh(svcGeo, pulmMat);
-    heartGroup.add(svcMesh);
-
-    // --- 4. Coronary Arteries (TubeGeometry over CatmullRomCurve3) ---
-    // LAD: Left Anterior Descending Artery
+    // --- 4. The 3 Coronary Arteries (LAD, LCX, RCA) ---
+    // LAD (Left Anterior Descending)
     const ladCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-0.15, 0.95, 0.45),
-      new THREE.Vector3(-0.25, 0.65, 0.88),
-      new THREE.Vector3(-0.35, 0.25, 1.05),
-      new THREE.Vector3(-0.25, -0.25, 1.02),
-      new THREE.Vector3(-0.15, -0.75, 0.8),
-      new THREE.Vector3(-0.05, -1.2, 0.45),
-      new THREE.Vector3(0.0, -1.35, 0.15)
+      new THREE.Vector3(-0.15, 1.05, 0.8),
+      new THREE.Vector3(-0.1, 0.65, 1.25),
+      new THREE.Vector3(-0.05, 0.15, 1.34),
+      new THREE.Vector3(0.02, -0.45, 1.15),
+      new THREE.Vector3(0.06, -0.95, 0.78),
+      new THREE.Vector3(0.08, -1.35, 0.35)
     ]);
-    const ladGeo = new THREE.TubeGeometry(ladCurve, 64, 0.065, 16, false);
+    const ladGeo = new THREE.TubeGeometry(ladCurve, 50, 0.078, 16, false);
     const ladMat = new THREE.MeshStandardMaterial({
       color: getRiskThreeColor(probabilities.LAD),
-      roughness: 0.35,
-      metalness: 0.1
+      roughness: 0.3,
+      metalness: 0.2
     });
+    materialsRef.current['LAD'] = ladMat;
     const ladMesh = new THREE.Mesh(ladGeo, ladMat);
-    ladMesh.userData = { name: 'LAD', title: 'Left anterior descending artery' };
+    ladMesh.name = 'LAD';
     heartGroup.add(ladMesh);
 
-    // LCX: Left Circumflex Artery
+    // LCX (Left Circumflex)
     const lcxCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-0.15, 0.95, 0.45),
-      new THREE.Vector3(-0.55, 0.85, 0.55),
-      new THREE.Vector3(-0.95, 0.65, 0.4),
-      new THREE.Vector3(-1.25, 0.35, -0.05),
+      new THREE.Vector3(-0.15, 1.05, 0.8),
+      new THREE.Vector3(-0.45, 0.85, 0.95),
+      new THREE.Vector3(-0.95, 0.65, 0.7),
+      new THREE.Vector3(-1.25, 0.35, 0.1),
       new THREE.Vector3(-1.18, -0.15, -0.45),
-      new THREE.Vector3(-0.85, -0.65, -0.65)
+      new THREE.Vector3(-0.85, -0.55, -0.7)
     ]);
-    const lcxGeo = new THREE.TubeGeometry(lcxCurve, 64, 0.058, 16, false);
+    const lcxGeo = new THREE.TubeGeometry(lcxCurve, 45, 0.068, 16, false);
     const lcxMat = new THREE.MeshStandardMaterial({
       color: getRiskThreeColor(probabilities.LCX),
-      roughness: 0.35,
-      metalness: 0.1
+      roughness: 0.3,
+      metalness: 0.2
     });
+    materialsRef.current['LCX'] = lcxMat;
     const lcxMesh = new THREE.Mesh(lcxGeo, lcxMat);
-    lcxMesh.userData = { name: 'LCX', title: 'Left circumflex artery' };
+    lcxMesh.name = 'LCX';
     heartGroup.add(lcxMesh);
 
-    // RCA: Right Coronary Artery
+    // RCA (Right Coronary Artery)
     const rcaCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.35, 0.8, 0.45),
-      new THREE.Vector3(0.75, 0.65, 0.65),
-      new THREE.Vector3(0.95, 0.25, 0.62),
-      new THREE.Vector3(1.05, -0.2, 0.42),
-      new THREE.Vector3(0.85, -0.65, 0.05),
-      new THREE.Vector3(0.55, -1.0, -0.3),
-      new THREE.Vector3(0.15, -1.25, -0.25)
+      new THREE.Vector3(0.2, 0.95, 0.75),
+      new THREE.Vector3(0.65, 0.7, 0.85),
+      new THREE.Vector3(1.05, 0.35, 0.65),
+      new THREE.Vector3(1.15, -0.2, 0.25),
+      new THREE.Vector3(0.95, -0.75, -0.25),
+      new THREE.Vector3(0.45, -1.05, -0.55)
     ]);
-    const rcaGeo = new THREE.TubeGeometry(rcaCurve, 64, 0.062, 16, false);
+    const rcaGeo = new THREE.TubeGeometry(rcaCurve, 45, 0.072, 16, false);
     const rcaMat = new THREE.MeshStandardMaterial({
       color: getRiskThreeColor(probabilities.RCA),
-      roughness: 0.35,
-      metalness: 0.1
+      roughness: 0.3,
+      metalness: 0.2
     });
+    materialsRef.current['RCA'] = rcaMat;
     const rcaMesh = new THREE.Mesh(rcaGeo, rcaMat);
-    rcaMesh.userData = { name: 'RCA', title: 'Right coronary artery' };
+    rcaMesh.name = 'RCA';
     heartGroup.add(rcaMesh);
 
-    materialsRef.current = { LAD: ladMat, LCX: lcxMat, RCA: rcaMat };
+    // Initial anatomical viewing tilt
+    heartGroup.rotation.y = -0.25;
+    heartGroup.rotation.x = 0.08;
 
-    // --- 5. Mouse Interaction & Orbit Dragging ---
+    // --- 5. Mouse Interaction Handlers ---
+    const getIntersection = (e: MouseEvent): THREE.Intersection | null => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(
+        [ladMesh, lcxMesh, rcaMesh],
+        false
+      );
+      return intersects.length > 0 ? intersects[0] : null;
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
       isDraggingRef.current = true;
       previousMousePosition.current = { x: e.clientX, y: e.clientY };
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      const rect = mount.getBoundingClientRect();
-      const mouseX = ((e.clientX - rect.left) / mount.clientWidth) * 2 - 1;
-      const mouseY = -((e.clientY - rect.top) / mount.clientHeight) * 2 + 1;
-      mouseRef.current.set(mouseX, mouseY);
+      const rect = renderer.domElement.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
 
-      // Raycast for hover
-      raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const intersects = raycasterRef.current.intersectObjects([ladMesh, lcxMesh, rcaMesh]);
-
-      if (intersects.length > 0) {
-        const hit = intersects[0].object;
-        const name = hit.userData.name;
-        setHoveredVessel(name);
-        setTooltipPos({ x: e.clientX - rect.left + 12, y: e.clientY - rect.top - 18 });
-      } else {
-        setHoveredVessel(null);
-        setTooltipPos(null);
-      }
-
-      if (isDraggingRef.current && heartGroupRef.current) {
+      if (isDraggingRef.current) {
         const deltaX = e.clientX - previousMousePosition.current.x;
         const deltaY = e.clientY - previousMousePosition.current.y;
 
-        heartGroupRef.current.rotation.y += deltaX * 0.008;
-        heartGroupRef.current.rotation.x += deltaY * 0.008;
+        heartGroup.rotation.y += deltaX * 0.008;
+        heartGroup.rotation.x += deltaY * 0.008;
 
         previousMousePosition.current = { x: e.clientX, y: e.clientY };
+        setHoveredVessel(null);
+      } else {
+        const hit = getIntersection(e);
+        if (hit && ['LAD', 'LCX', 'RCA'].includes(hit.object.name)) {
+          setHoveredVessel(hit.object.name);
+          setTooltipPos({ x: currentX, y: currentY });
+          renderer.domElement.style.cursor = 'pointer';
+        } else {
+          setHoveredVessel(null);
+          renderer.domElement.style.cursor = 'grab';
+        }
       }
     };
 
-    const handleMouseUp = (e: MouseEvent) => {
-      if (isDraggingRef.current) {
-        const deltaX = Math.abs(e.clientX - previousMousePosition.current.x);
-        const deltaY = Math.abs(e.clientY - previousMousePosition.current.y);
-        if (deltaX < 5 && deltaY < 5) {
-          raycasterRef.current.setFromCamera(mouseRef.current, camera);
-          const intersects = raycasterRef.current.intersectObjects([ladMesh, lcxMesh, rcaMesh]);
-          if (intersects.length > 0) {
-            const name = intersects[0].object.userData.name;
-            onSelectVessel(name);
-          }
-        }
-      }
+    const handleMouseUp = () => {
       isDraggingRef.current = false;
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const hit = getIntersection(e);
+      if (hit && ['LAD', 'LCX', 'RCA'].includes(hit.object.name)) {
+        onSelectVessel(hit.object.name);
+      }
     };
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      if (!cameraRef.current) return;
-      cameraRef.current.position.z = THREE.MathUtils.clamp(
-        cameraRef.current.position.z + e.deltaY * 0.003,
-        2.5,
-        7.5
-      );
+      camera.position.z = Math.max(3.5, Math.min(8.0, camera.position.z + e.deltaY * 0.003));
     };
 
-    mount.addEventListener('mousedown', handleMouseDown);
+    const dom = renderer.domElement;
+    dom.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-    mount.addEventListener('wheel', handleWheel, { passive: false });
+    dom.addEventListener('click', handleClick);
+    dom.addEventListener('wheel', handleWheel, { passive: false });
 
-    // --- 6. Animation Loop ---
+    // --- 6. Smooth Animation Loop ---
     let animationFrameId: number;
     let clock = new THREE.Clock();
 
@@ -290,219 +286,285 @@ export const HeartViewer: React.FC<HeartViewerProps> = ({
       animationFrameId = requestAnimationFrame(animate);
       const elapsedTime = clock.getElapsedTime();
 
-      // Gentle physiological heartbeat rhythm (72 bpm)
-      const beatFreq = 1.2;
-      const cycle = (elapsedTime * beatFreq) % 1.0;
-      let pulse = 0.0;
-      if (cycle < 0.15) {
-        pulse = Math.sin((cycle / 0.15) * Math.PI) * 0.035;
-      } else if (cycle >= 0.2 && cycle < 0.35) {
-        pulse = Math.sin(((cycle - 0.2) / 0.15) * Math.PI) * 0.02;
-      }
+      // Subtle anatomical heartbeat contraction (72 BPM)
+      const pulse = 1.0 + Math.pow(Math.sin(elapsedTime * Math.PI * 1.2), 8) * 0.02;
+      heartGroup.scale.set(pulse, pulse, pulse);
 
-      if (heartGroupRef.current) {
-        heartGroupRef.current.scale.set(1.0 + pulse, 1.0 + pulse * 1.05, 1.0 + pulse);
-        
-        if (autoRotate && !isDraggingRef.current) {
-          heartGroupRef.current.rotation.y += 0.004;
-        }
+      // Auto-rotation toggle
+      if (autoRotate && !isDraggingRef.current) {
+        heartGroup.rotation.y += 0.005;
       }
 
       renderer.render(scene, camera);
     };
-
     animate();
 
+    // --- 7. Window Resize Handler ---
     const handleResize = () => {
       if (!mount || !renderer || !camera) return;
       const w = mount.clientWidth;
-      const h = mount.clientHeight;
+      const h = mount.clientHeight || 440;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
-
     window.addEventListener('resize', handleResize);
 
     return () => {
       cancelAnimationFrame(animationFrameId);
-      mount.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('resize', handleResize);
+      dom.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      mount.removeEventListener('wheel', handleWheel);
-      window.removeEventListener('resize', handleResize);
-      if (mount && renderer.domElement) {
-        mount.removeChild(renderer.domElement);
+      dom.removeEventListener('click', handleClick);
+      dom.removeEventListener('wheel', handleWheel);
+      if (mount.contains(dom)) {
+        mount.removeChild(dom);
       }
       renderer.dispose();
     };
   }, []);
 
-  // Update artery colors smoothly using central risk bands
+  // Update vessel risk colors dynamically when probabilities change
   useEffect(() => {
-    ['LAD', 'LCX', 'RCA'].forEach(vessel => {
+    (['LAD', 'LCX', 'RCA'] as const).forEach(vessel => {
       const mat = materialsRef.current[vessel];
       if (mat) {
-        const prob = probabilities[vessel as keyof typeof probabilities] || 0.0;
-        const color = getRiskThreeColor(prob);
-        mat.color.copy(color);
-        
-        // Selected vessel gets a subtle clean brightness boost (no neon bloom)
-        if (selectedVessel === vessel) {
-          mat.emissive.copy(color);
-          mat.emissiveIntensity = 0.4;
-        } else if (hoveredVessel === vessel) {
-          mat.emissive.copy(color);
-          mat.emissiveIntensity = 0.25;
-        } else {
-          mat.emissive.set(0x000000);
-          mat.emissiveIntensity = 0;
-        }
+        const targetColor = getRiskThreeColor(probabilities[vessel] || 0.0);
+        mat.color.copy(targetColor);
+        mat.emissive.copy(
+          selectedVessel === vessel
+            ? targetColor.clone().multiplyScalar(0.4)
+            : new THREE.Color(0x000000)
+        );
       }
     });
-  }, [probabilities, selectedVessel, hoveredVessel]);
 
-  const handleResetView = () => {
-    if (heartGroupRef.current && cameraRef.current) {
-      heartGroupRef.current.rotation.set(0, 0, 0);
-      cameraRef.current.position.set(0, 1.0, 5.2);
+    // Update myocardium visibility if viewMode changes
+    const myoMat = materialsRef.current['myocardium'];
+    if (myoMat) {
+      myoMat.opacity = viewMode === 'vessels' ? 0.22 : 1.0;
+      myoMat.transparent = viewMode === 'vessels';
     }
-  };
+  }, [probabilities, selectedVessel, viewMode]);
 
   const handleZoom = (delta: number) => {
-    if (cameraRef.current) {
-      cameraRef.current.position.z = THREE.MathUtils.clamp(
-        cameraRef.current.position.z + delta,
-        2.5,
-        7.5
-      );
+    if (!cameraRef.current) return;
+    cameraRef.current.position.z = Math.max(3.5, Math.min(8.0, cameraRef.current.position.z + delta));
+  };
+
+  const handleResetView = () => {
+    if (cameraRef.current && heartGroupRef.current) {
+      cameraRef.current.position.set(0, 0.5, 5.4);
+      heartGroupRef.current.rotation.set(0.08, -0.25, 0);
+      heartGroupRef.current.scale.set(1, 1, 1);
     }
   };
 
   return (
-    <div className="relative w-full h-[580px] rounded-lg overflow-hidden bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col shadow-sm">
-      {/* 3D Canvas Mount */}
-      <div 
-        ref={mountRef} 
-        className="w-full h-full cursor-grab active:cursor-grabbing relative select-none"
+    <div id="heart-viewer" className="bg-white dark:bg-[#0E1D2D] border border-slate-200 dark:border-[#1E3147] rounded-xl p-4 sm:p-5 shadow-xs relative flex flex-col justify-between overflow-hidden">
+
+      {/* 3D Canvas Container */}
+      <div
+        ref={mountRef}
+        className="w-full h-[360px] sm:h-[420px] rounded-lg overflow-hidden relative cursor-grab bg-gradient-to-b from-slate-50 to-slate-100 dark:from-[#07121E] dark:to-[#0B1B2B]"
       />
 
-      {/* Top Left: Clean Title & Prompt */}
-      <div className="absolute top-3 left-3 pointer-events-none">
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-          3D coronary anatomy
-        </h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Rotate to inspect vessel pathways • Click vessel to view SHAP drivers
-        </p>
-      </div>
-
-      {/* Top Right: Standardized Clinical Risk Legend */}
-      <div className="absolute top-3 right-3 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm px-3 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-3 text-xs">
-        <span className="text-slate-500 dark:text-slate-400 font-medium text-[11px]">Risk:</span>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-600" />
-          <span className="text-slate-700 dark:text-slate-300 tabular-nums">Low (&lt;35%)</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-amber-500" />
-          <span className="text-slate-700 dark:text-slate-300 tabular-nums">Intermediate (35–60%)</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-rose-600" />
-          <span className="text-slate-700 dark:text-slate-300 tabular-nums">High (&gt;60%)</span>
-        </div>
-      </div>
-
-      {/* Floating Hover Tooltip (Professional clean popover) */}
-      {hoveredVessel && tooltipPos && (
-        <div 
-          className="absolute z-20 pointer-events-none px-2.5 py-1.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-md transform -translate-x-1/2 -translate-y-full text-xs"
-          style={{ left: `${tooltipPos.x}px`, top: `${tooltipPos.y}px` }}
-        >
-          <div className="font-semibold text-slate-900 dark:text-slate-100">
-            {hoveredVessel === 'LAD' ? 'Left anterior descending (LAD)' :
-             hoveredVessel === 'LCX' ? 'Left circumflex (LCX)' :
-             'Right coronary artery (RCA)'}
+      {/* Top Left: Card Title & Subtitle */}
+      <div className="absolute top-5 left-5 pointer-events-none z-10">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md bg-teal-50 dark:bg-teal-950/60 flex items-center justify-center text-teal-600 dark:text-teal-400">
+            <Box className="w-4 h-4" />
           </div>
-          <div className="text-slate-600 dark:text-slate-300 text-[11px] tabular-nums mt-0.5">
-            Estimated risk: <strong className="text-slate-900 dark:text-slate-100">{Math.round((probabilities[hoveredVessel as keyof typeof probabilities] || 0) * 100)}%</strong>
+          <div>
+            <h3 className="text-sm font-bold text-[#0B1B2B] dark:text-slate-100">
+              3D Heart Visualization
+            </h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Interactive model showing predicted vessel-specific stenosis risk
+            </p>
           </div>
         </div>
-      )}
-
-      {/* Bottom Left: Vessel Quick Selector Buttons */}
-      <div className="absolute bottom-3 left-3 flex items-center gap-1 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm p-1 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
-        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium px-2">Vessel:</span>
-        {(['CAD', 'LAD', 'LCX', 'RCA'] as const).map(vessel => {
-          const isSelected = selectedVessel === vessel;
-          const prob = vessel === 'CAD' ? (probabilities.LAD || 0.5) : probabilities[vessel as keyof typeof probabilities];
-          const band = getRiskBand(prob);
-
-          return (
-            <button
-              key={vessel}
-              onClick={() => onSelectVessel(vessel)}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition flex items-center gap-1.5 ${
-                isSelected 
-                  ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-semibold ring-1 ring-slate-300 dark:ring-slate-600' 
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
-              }`}
-            >
-              {vessel !== 'CAD' && (
-                <span className={`w-1.5 h-1.5 rounded-full ${band.dotColor}`} />
-              )}
-              <span>{vessel}</span>
-              {vessel !== 'CAD' && (
-                <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-                  {Math.round(prob * 100)}%
-                </span>
-              )}
-            </button>
-          );
-        })}
       </div>
 
-      {/* Bottom Right: Clean Unobtrusive Toolbar */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm p-1 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm text-slate-600 dark:text-slate-300">
+      {/* Top Right: Heart View / Coronary Vessels Switcher */}
+      <div className="absolute top-5 right-5 z-10 flex items-center bg-[#0B1B2B]/85 backdrop-blur-md p-1 rounded-lg border border-[#1A2E44] text-xs shadow-md">
         <button
-          onClick={() => setAutoRotate(!autoRotate)}
-          className={`px-2 py-1 rounded text-xs transition flex items-center gap-1 ${
-            autoRotate ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-medium' : 'hover:bg-slate-100 dark:hover:bg-slate-700'
+          type="button"
+          onClick={() => setViewMode('heart')}
+          className={`px-3 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+            viewMode === 'heart'
+              ? 'bg-teal-600 text-white shadow-xs'
+              : 'text-slate-300 hover:text-white'
           }`}
-          title="Toggle rotation"
         >
-          <RotateCw className="w-3.5 h-3.5" />
-          <span>Rotate</span>
+          Heart View
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('vessels')}
+          className={`px-3 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+            viewMode === 'vessels'
+              ? 'bg-teal-600 text-white shadow-xs'
+              : 'text-slate-300 hover:text-white'
+          }`}
+        >
+          Coronary Vessels Only
+        </button>
+      </div>
+
+      {/* Middle Left: Tool Control Buttons (Rotate, Zoom In, Zoom Out, Reset) */}
+      <div className="absolute left-5 top-24 z-10 flex flex-col gap-1.5 bg-[#0B1B2B]/85 backdrop-blur-md p-1.5 rounded-xl border border-[#1A2E44] text-slate-300 shadow-md">
+        <button
+          type="button"
+          onClick={() => setAutoRotate(!autoRotate)}
+          className={`p-2 rounded-lg text-xs transition flex flex-col items-center gap-0.5 cursor-pointer ${
+            autoRotate ? 'bg-teal-600 text-white' : 'hover:bg-[#13283E] hover:text-white'
+          }`}
+          title="Toggle Auto-Rotation"
+        >
+          <RotateCw className="w-4 h-4" />
+          <span className="text-[9px] font-medium">Rotate</span>
         </button>
 
         <button
+          type="button"
           onClick={() => handleZoom(-0.5)}
-          className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-          title="Zoom in"
-          aria-label="Zoom in"
+          className="p-2 rounded-lg text-xs hover:bg-[#13283E] hover:text-white transition flex flex-col items-center gap-0.5 cursor-pointer"
+          title="Zoom In"
         >
-          <ZoomIn className="w-3.5 h-3.5" />
+          <ZoomIn className="w-4 h-4" />
+          <span className="text-[9px] font-medium">Zoom In</span>
         </button>
 
         <button
+          type="button"
           onClick={() => handleZoom(0.5)}
-          className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-          title="Zoom out"
-          aria-label="Zoom out"
+          className="p-2 rounded-lg text-xs hover:bg-[#13283E] hover:text-white transition flex flex-col items-center gap-0.5 cursor-pointer"
+          title="Zoom Out"
         >
-          <ZoomOut className="w-3.5 h-3.5" />
+          <ZoomOut className="w-4 h-4" />
+          <span className="text-[9px] font-medium">Zoom Out</span>
         </button>
 
         <button
+          type="button"
           onClick={handleResetView}
-          className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-          title="Reset camera view"
-          aria-label="Reset camera view"
+          className="p-2 rounded-lg text-xs hover:bg-[#13283E] hover:text-white transition flex flex-col items-center gap-0.5 cursor-pointer"
+          title="Reset Camera View"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
+          <RotateCcw className="w-4 h-4" />
+          <span className="text-[9px] font-medium">Reset</span>
         </button>
+      </div>
+
+      {/* Middle Right Overlay: Risk Color Guide & Interaction Tips */}
+      <div className="absolute right-5 top-20 z-10 hidden sm:flex flex-col gap-2 pointer-events-none">
+        {/* Risk Color Guide */}
+        <div className="bg-[#0B1B2B]/85 backdrop-blur-md p-2.5 rounded-xl border border-[#1A2E44] shadow-md text-[11px] text-white w-44">
+          <span className="text-[11px] font-bold text-slate-300 block mb-1.5">
+            Risk Color Guide
+          </span>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <span className="text-slate-300 text-[10px]">Low Risk</span>
+              </div>
+              <span className="text-slate-400 tabular-nums text-[10px]">&lt; 35%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                <span className="text-slate-300 text-[10px]">Moderate Risk</span>
+              </div>
+              <span className="text-slate-400 tabular-nums text-[10px]">35 – 60%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                <span className="text-slate-300 text-[10px]">High Risk</span>
+              </div>
+              <span className="text-slate-400 tabular-nums text-[10px]">&gt; 60%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Interaction Tips Box */}
+        <div className="bg-[#0B1B2B]/85 backdrop-blur-md p-2.5 rounded-xl border border-[#1A2E44] shadow-md text-[10px] text-slate-300 w-44 space-y-1">
+          <span className="font-bold text-slate-200 block text-[11px]">Interaction Guide</span>
+          <p className="flex items-center gap-1.5">
+            <span>🖱️</span> Drag to rotate model
+          </p>
+          <p className="flex items-center gap-1.5">
+            <span>🔍</span> Scroll wheel to zoom
+          </p>
+          <p className="flex items-center gap-1.5">
+            <span>🎯</span> Click vessel to select
+          </p>
+          <p className="flex items-center gap-1.5">
+            <span>🔄</span> Click reset to restore framing
+          </p>
+        </div>
+      </div>
+
+      {/* Floating 3D Callout Badges on the heart (synchronizing with selectedVessel) */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {/* LAD Callout Badge (Top Right of Heart) */}
+        <div
+          onClick={() => onSelectVessel('LAD')}
+          className={`pointer-events-auto absolute top-20 right-28 sm:right-52 p-1.5 px-2.5 rounded-xl border shadow-lg text-center cursor-pointer transition-transform hover:scale-105 ${
+            selectedVessel === 'LAD'
+              ? 'bg-teal-600 text-white border-teal-300 ring-2 ring-teal-400/50'
+              : 'bg-[#0B1B2B]/90 text-white border-slate-700 hover:border-teal-400'
+          }`}
+          role="button"
+          tabIndex={0}
+          aria-label="Select LAD vessel"
+        >
+          <div className="text-[10px] font-bold">LAD Branch</div>
+          <div className="text-xs font-extrabold tabular-nums">
+            {(probabilities.LAD * 100).toFixed(1)}%
+          </div>
+        </div>
+
+        {/* LCX Callout Badge (Right Middle of Heart) */}
+        <div
+          onClick={() => onSelectVessel('LCX')}
+          className={`pointer-events-auto absolute bottom-24 right-20 sm:right-40 p-1.5 px-2.5 rounded-xl border shadow-lg text-center cursor-pointer transition-transform hover:scale-105 ${
+            selectedVessel === 'LCX'
+              ? 'bg-teal-600 text-white border-teal-300 ring-2 ring-teal-400/50'
+              : 'bg-[#0B1B2B]/90 text-white border-slate-700 hover:border-teal-400'
+          }`}
+          role="button"
+          tabIndex={0}
+          aria-label="Select LCX vessel"
+        >
+          <div className="text-[10px] font-bold">LCX Branch</div>
+          <div className="text-xs font-extrabold tabular-nums">
+            {(probabilities.LCX * 100).toFixed(1)}%
+          </div>
+        </div>
+
+        {/* RCA Callout Badge (Left Middle of Heart) */}
+        <div
+          onClick={() => onSelectVessel('RCA')}
+          className={`pointer-events-auto absolute bottom-28 left-20 sm:left-28 p-1.5 px-2.5 rounded-xl border shadow-lg text-center cursor-pointer transition-transform hover:scale-105 ${
+            selectedVessel === 'RCA'
+              ? 'bg-teal-600 text-white border-teal-300 ring-2 ring-teal-400/50'
+              : 'bg-[#0B1B2B]/90 text-white border-slate-700 hover:border-teal-400'
+          }`}
+          role="button"
+          tabIndex={0}
+          aria-label="Select RCA vessel"
+        >
+          <div className="text-[10px] font-bold">RCA Branch</div>
+          <div className="text-xs font-extrabold tabular-nums">
+            {(probabilities.RCA * 100).toFixed(1)}%
+          </div>
+        </div>
       </div>
     </div>
   );
 };
+export default HeartViewer;

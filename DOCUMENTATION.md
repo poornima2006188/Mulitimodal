@@ -1,8 +1,8 @@
 # Track A Project Documentation: CardioRisk 3D
 ## Interactive 3D Cardiovascular Risk Visualization & SHAP Prediction System
-**Multimodal AI Hackathon 2026 | Track A**  
-**Author**: Kirthana (Final-Year CSE)  
-**Dataset**: UCI Extension of Z-Alizadeh Sani ($N=303$, 57 Engineered Features)  
+**Multimodal AI Hackathon 2026 | Track A**
+**Author**: Kirthana (Final-Year CSE)
+**Dataset**: UCI Extension of Z-Alizadeh Sani ($N=303$, 57 Engineered Features)
 
 ---
 
@@ -24,6 +24,8 @@ To develop an end-to-end, clinically interpretable web system that:
 
 ## 2. Dataset Preprocessing & Feature Engineering
 The model is trained on the verified **Extension of Z-Alizadeh Sani** dataset from the UCI Machine Learning Repository (Sheet 1, 303 patient records, 54 raw input features + 4 targets).
+- **Dataset Citation**: Alizadeh Sani, Z., Naseri, M., Khorasani, M., et al. (2018). *A computer-aided diagnosis system for detecting coronary artery disease using clinical data*. UCI Machine Learning Repository. DOI: `10.24432/C59P43`.
+- **Dataset License**: Creative Commons Attribution 4.0 International (CC BY 4.0).
 
 ### 2.1 Target Formulation
 - `Cath` $\rightarrow$ Overall CAD (Binary: $1 = \text{CAD}, 0 = \text{Normal}$). Class distribution: 216 CAD / 87 Normal (71.3% positive).
@@ -89,10 +91,13 @@ To establish clinical credibility and avoid black-box opacity:
 
 ## 5. Interactive 3D Heart & Coronary Vessel Rendering
 Most free 3D heart meshes lack anatomically separated coronary vessels suitable for per-artery dynamic recoloring. To solve this:
-- **Procedural Coronary Vasculature**: Built using Three.js `TubeGeometry` extruded along parametric 3D cubic splines (`CatmullRomCurve3`) precisely hugging the cardiac myocardium:
-  - **LAD**: Runs down the anterior interventricular groove toward the cardiac apex.
-  - **LCX**: Branches leftward wrapping around the atrioventricular groove.
-  - **RCA**: Curves along the right coronary sulcus and down the posterior margin.
+- **Procedural Coronary Vasculature & 3D Mesh (Attribution & License)**:
+  The 3D heart and its coronary vasculature are **100% procedurally generated Three.js WebGL assets** authored specifically for this project (MIT License, zero external third-party mesh dependencies).
+  - Built using Three.js `TubeGeometry` extruded along parametric 3D cubic splines (`CatmullRomCurve3`) precisely hugging the cardiac myocardium:
+    - **LAD**: Runs down the anterior interventricular groove toward the cardiac apex.
+    - **LCX**: Branches leftward wrapping around the atrioventricular groove.
+    - **RCA**: Curves along the right coronary sulcus and down the posterior margin.
+  - The ventricular myocardium body is deformed from a native Three.js `SphereGeometry(1.35, 64, 64)` with mathematical apical tapering.
 - **Dynamic Risk Shader Interpolation**:
   Artery materials interpolate smoothly across three clinical color regimes:
   $$\text{Green } (\le 35\%) \longrightarrow \text{Amber } (35\% - 60\%) \longrightarrow \text{Crimson Red } (> 60\%)$$
